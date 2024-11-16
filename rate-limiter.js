@@ -1,36 +1,43 @@
-const rateLimit = (options = {}) => {
-    const requests = {}; // Store request timestamps for each IP and route
-  
-    return (req, res, next) => {
-      const ip = req.ip; // Get the client's IP address
-      const route = req.path; // Get the current route path
-      const key = `${ip}:${route}`; // Combine IP and route for unique identification
-      const currentTime = Date.now(); // Current timestamp
-  
-      // Extract limit and timeWindow from options, with default values
-      const limit = options[route]?.limit || 10; // Default limit: 10
-      const timeWindow = options[route]?.timeWindow || 60000; // Default time window: 1 minute
-  
-      if (!requests[key]) {
-        requests[key] = []; // Initialize the request history for this key
-      }
-  
-      // Filter out old requests outside the time window
-      requests[key] = requests[key].filter(time => currentTime - time < timeWindow);
-  
-      // Check if the limit has been exceeded
-      if (requests[key].length >= limit) {
-        return res.status(429).json({
-          error: options[route]?.message || "Too Many Requests",
-        });
-      }
-  
-      // Log the current request timestamp
-      requests[key].push(currentTime);
-  
-      next(); // Allow the request to continue
-    };
+// Rate Limiting Middleware
+const rateLimit = (config = {}) => {
+  const requests = {}; // Store request timestamps for each IP and route
+
+  return (req, res, next) => {
+    // Step 1: Identify client and route
+    const ip = req.ip; // Get the client's IP address
+    const route = req.path; // Get the current route path
+    const key = `${ip}:${route}`; // Create a unique key combining IP and route
+    const currentTime = Date.now(); // Get the current timestamp
+
+    // Step 2: Determine user type and corresponding rate limits
+    const userType = req.user?.userType || "default"; // Get user type or fallback to "default"
+    const { limit = 10, timeWindow = 60000 } = config[userType] || config.default || {};
+
+    // Step 3: Initialize or update request history for this key
+    if (!requests[key]) {
+      requests[key] = []; // Initialize request history for this key
+    }
+
+    // Step 4: Filter out old requests that are outside the time window
+    requests[key] = requests[key].filter(time => currentTime - time < timeWindow);
+
+    // Step 5: Check if the request exceeds the rate limit
+    if (requests[key].length >= limit) {
+      return res.status(429).json({
+        error: config[route]?.message || "Too Many Requests", // Custom message for the route
+        statusCode: 429, // HTTP status code for rate limiting
+        limit: limit, // Rate limit for the route
+        timeWindow: timeWindow, // Time window for the rate limit
+        userType: userType, // User type for the rate limit
+      });
+    }
+
+    // Step 6: Log the current request timestamp
+    requests[key].push(currentTime);
+
+    // Step 7: Proceed to the next middleware or route
+    next();
   };
-  
-  module.exports = rateLimit;
-  
+};
+
+module.exports = rateLimit; // Export the middleware for use in other files
