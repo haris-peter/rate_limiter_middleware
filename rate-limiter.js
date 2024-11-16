@@ -1,28 +1,34 @@
-const rateLimit = (limit, timeWindow, options = {}) => {
-    const requests = {};  // Store request timestamps per IP address
-    const defaultMessage = "Too Many Requests";  // Default message
-    const errorMessage = options.message || defaultMessage;  // Use custom or default message
+const rateLimit = (options = {}) => {
+    const requests = {}; // Store request timestamps for each IP and route
   
     return (req, res, next) => {
-      const ip = req.ip;  // Get the IP address of the client
-      const currentTime = Date.now();  // Get the current timestamp
+      const ip = req.ip; // Get the client's IP address
+      const route = req.path; // Get the current route path
+      const key = `${ip}:${route}`; // Combine IP and route for unique identification
+      const currentTime = Date.now(); // Current timestamp
   
-      if (!requests[ip]) {
-        requests[ip] = [];  // Initialize the IP entry if it doesn't exist
+      // Extract limit and timeWindow from options, with default values
+      const limit = options[route]?.limit || 10; // Default limit: 10
+      const timeWindow = options[route]?.timeWindow || 60000; // Default time window: 1 minute
+  
+      if (!requests[key]) {
+        requests[key] = []; // Initialize the request history for this key
       }
   
-      // Filter out old requests
-      requests[ip] = requests[ip].filter(time => currentTime - time < timeWindow);
+      // Filter out old requests outside the time window
+      requests[key] = requests[key].filter(time => currentTime - time < timeWindow);
   
-      // Check if the limit is exceeded
-      if (requests[ip].length >= limit) {
-        return res.status(429).json({ error: errorMessage });  // Respond with the custom error message
+      // Check if the limit has been exceeded
+      if (requests[key].length >= limit) {
+        return res.status(429).json({
+          error: options[route]?.message || "Too Many Requests",
+        });
       }
   
-      // Log the current request time
-      requests[ip].push(currentTime);
+      // Log the current request timestamp
+      requests[key].push(currentTime);
   
-      next();  // Proceed to the next middleware or route handler
+      next(); // Allow the request to continue
     };
   };
   
