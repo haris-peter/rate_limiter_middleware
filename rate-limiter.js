@@ -7,8 +7,8 @@ const rateLimit = (config = {}) => {
     // Step 1: Identify client and route
     const ip = req.ip; // Get the client's IP address
     const route = req.path; // Get the current route path
-    const key = `${ip}:${route}`; // Unique key combining IP and route
-    const currentTime = Date.now(); // Current timestamp
+    const key = `${ip}:${route}`; // Create a unique key combining IP and route
+    const currentTime = Date.now(); // Get the current timestamp
 
     // Step 2: Determine user type and rate limits
     const userType = req.user?.userType || "default"; // Default to "default" if userType is undefined
@@ -20,18 +20,22 @@ const rateLimit = (config = {}) => {
 
       // Step 4: Set expiration time for the key if it's the first request
       if (count === 1) {
-        await redis.expire(key, timeWindow / 1000); // Set expiration in seconds
+        await redis.expire(key, timeWindow / 1000); // Set expiration time in seconds
       }
 
       // Step 5: Check if the request count exceeds the limit
       if (count > limit) {
-        return res.status(429).json({
-          error: config[route]?.message || "Too many requests, please try again later", // Custom or default error message
-          statusCode: 429,
-          limit: limit,
-          timeWindow: timeWindow,
-          userType: userType,
-        });
+        const ttl = await redis.ttl(key); // Get the time-to-live for the key
+        return res
+          .status(429) // Set the HTTP status code to 429 (Too Many Requests)
+          .set("Retry-After", ttl) // Inform the client when they can retry
+          .json({
+            error: config[route]?.message || "Too many requests, please try again later", // Custom or default error message
+            statusCode: 429, // HTTP status code
+            limit: limit, // Request limit
+            timeWindow: timeWindow, // Time window for the limit
+            userType: userType, // User type for this request
+          });
       }
     } catch (err) {
       // Step 6: Handle Redis errors
